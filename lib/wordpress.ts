@@ -21,25 +21,46 @@ export type WPPost = {
 
 class WordPressApiError extends Error {}
 
-async function wpFetch<T>(path: string, revalidateSeconds = 300): Promise<T> {
-  const url = `${WP_URL}/wp-json/wp/v2${path}`;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const res = await fetch(url, { next: { revalidate: revalidateSeconds } });
-    if (res.ok) return res.json();
-    // WP hosts sometimes throttle bursts of requests with a transient 503; retry once.
-    if (res.status !== 503 || attempt === 1) {
-      throw new WordPressApiError(`WordPress API error ${res.status} on ${path}`);
+const RETRIES = 3;
+const TIMEOUT_MS = 8000;
+
+async function fetchWithRetry(url: string, revalidateSeconds: number): Promise<Response | null> {
+  for (let attempt = 0; attempt < RETRIES; attempt++) {
+    try {
+      const res = await fetch(url, {
+        next: { revalidate: revalidateSeconds },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      // WP hosts sometimes throttle bursts of requests with a transient 503; retry.
+      if (res.ok || res.status !== 503 || attempt === RETRIES - 1) return res;
+    } catch (err) {
+      // Network-level failure (timeout, DNS, connection refused). Retry, then give up.
+      if (attempt === RETRIES - 1) {
+        console.error(`WordPress fetch failed after ${RETRIES} attempts: ${url}`, err);
+        return null;
+      }
     }
-    await new Promise((r) => setTimeout(r, 500));
+    await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
   }
-  throw new WordPressApiError(`WordPress API error on ${path}`);
+  return null;
+}
+
+async function wpFetch<T>(path: string, revalidateSeconds = 300): Promise<T> {
+  const res = await fetchWithRetry(`${WP_URL}/wp-json/wp/v2${path}`, revalidateSeconds);
+  if (!res || !res.ok) {
+    throw new WordPressApiError(`WordPress API error ${res?.status ?? "network"} on ${path}`);
+  }
+  return res.json();
 }
 
 export async function getPosts(perPage = 6, page = 1) {
-  const res = await fetch(
+  const res = await fetchWithRetry(
     `${WP_URL}/wp-json/wp/v2/posts?per_page=${perPage}&page=${page}&_embed`,
-    { next: { revalidate: 300 } }
+    300
   );
+  // WordPress temporarily unreachable (host firewall, timeout, etc.): degrade to an
+  // empty list instead of crashing the whole page/build.
+  if (!res) return { posts: [] as WPPost[], totalPages: 0 };
   if (!res.ok) {
     if (res.status === 400) return { posts: [] as WPPost[], totalPages: 0 };
     throw new WordPressApiError(`WordPress API error ${res.status} on /posts`);
