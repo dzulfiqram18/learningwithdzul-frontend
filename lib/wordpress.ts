@@ -43,6 +43,15 @@ async function fetchWithRetry(url: string, revalidateSeconds: number): Promise<R
       });
       // WP hosts sometimes throttle bursts of requests with a transient 503,
       // or a WAF momentarily flags the request with a 403; retry both.
+      if (!res.ok) {
+        // Hostinger's edge CDN (hcdn) is fronting every request; capture its
+        // request id so a support ticket can trace exactly which edge rule fired.
+        console.error(
+          `WordPress fetch non-ok: ${res.status} on ${url} | x-hcdn-request-id=${res.headers.get(
+            "x-hcdn-request-id"
+          )} | x-hcdn-cache-status=${res.headers.get("x-hcdn-cache-status")}`
+        );
+      }
       if (res.ok || ![403, 503].includes(res.status) || attempt === RETRIES - 1) return res;
     } catch (err) {
       // Network-level failure (timeout, DNS, connection refused). Retry, then give up.
