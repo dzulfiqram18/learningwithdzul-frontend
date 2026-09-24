@@ -1,4 +1,4 @@
-const WP_URL = (process.env.NEXT_PUBLIC_WP_URL || "https://learningwithdzul.com").replace(/\/$/, "");
+const WP_URL = (process.env.NEXT_PUBLIC_WP_URL || "https://cms.learningwithdzul.com").replace(/\/$/, "");
 
 export type WPTerm = {
   id: number;
@@ -78,6 +78,29 @@ export async function getPostBySlug(slug: string): Promise<WPPost | null> {
 export async function getAllPostSlugs(): Promise<string[]> {
   const posts = await wpFetch<{ slug: string }[]>(`/posts?per_page=100&_fields=slug`, 3600);
   return posts.map((p) => p.slug);
+}
+
+export type SitemapPost = { slug: string; modified: string };
+
+// Walks every page of /posts (WordPress caps per_page at 100) to build the
+// sitemap. Revalidated hourly since sitemap freshness isn't time-critical.
+export async function getAllPostsForSitemap(): Promise<SitemapPost[]> {
+  const all: SitemapPost[] = [];
+  let page = 1;
+  for (;;) {
+    const res = await fetchWithRetry(
+      `${WP_URL}/wp-json/wp/v2/posts?per_page=100&page=${page}&_fields=slug,modified`,
+      3600
+    );
+    if (!res || !res.ok) break;
+    const batch: SitemapPost[] = await res.json();
+    if (batch.length === 0) break;
+    all.push(...batch);
+    const totalPages = Number(res.headers.get("X-WP-TotalPages") ?? "1");
+    if (page >= totalPages) break;
+    page++;
+  }
+  return all;
 }
 
 export function stripHtml(html: string): string {

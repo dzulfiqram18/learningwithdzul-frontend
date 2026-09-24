@@ -23,6 +23,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://www.learningwithdzul.com"),
   title: {
     default: "Learning with Dzul",
     template: "%s — Learning with Dzul",

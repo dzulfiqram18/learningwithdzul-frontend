@@ -1,9 +1,9 @@
 # Learning with Dzul — Frontend
 
-Frontend Next.js untuk learningwithdzul.com. WordPress tetap dipakai sebagai
-CMS (nulis & upload konten lewat wp-admin seperti biasa); situs ini menarik
-data lewat REST API bawaan WordPress (`/wp-json/wp/v2/...`) — tidak perlu
-plugin tambahan.
+Frontend Next.js untuk learningwithdzul.com. WordPress dipindah ke
+`cms.learningwithdzul.com` dan dipakai sebagai CMS (nulis & upload konten
+lewat wp-admin seperti biasa); situs ini menarik data lewat REST API bawaan
+WordPress (`/wp-json/wp/v2/...`) — tidak perlu plugin tambahan.
 
 ## Menjalankan lokal
 
@@ -18,7 +18,7 @@ Buka http://localhost:3000.
 
 | Variable | Default | Keterangan |
 | --- | --- | --- |
-| `NEXT_PUBLIC_WP_URL` | `https://learningwithdzul.com` | Base URL WordPress yang jadi sumber data. Ganti ke subdomain (misal `https://cms.learningwithdzul.com`) setelah WordPress dipindah ke subdomain. |
+| `NEXT_PUBLIC_WP_URL` | `https://cms.learningwithdzul.com` | Base URL WordPress yang jadi sumber data. |
 
 Salin `.env.local.example` ke `.env.local` untuk override saat development.
 
