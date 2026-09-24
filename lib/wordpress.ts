@@ -24,15 +24,26 @@ class WordPressApiError extends Error {}
 const RETRIES = 3;
 const TIMEOUT_MS = 8000;
 
+// Some host-level firewalls (e.g. Hostinger's WAF) 403 requests that don't
+// look like a browser — Vercel's build/runtime servers get flagged this way
+// even though the exact same request works fine from a regular browser.
+const BROWSER_LIKE_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+  Accept: "application/json",
+};
+
 async function fetchWithRetry(url: string, revalidateSeconds: number): Promise<Response | null> {
   for (let attempt = 0; attempt < RETRIES; attempt++) {
     try {
       const res = await fetch(url, {
+        headers: BROWSER_LIKE_HEADERS,
         next: { revalidate: revalidateSeconds },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
-      // WP hosts sometimes throttle bursts of requests with a transient 503; retry.
-      if (res.ok || res.status !== 503 || attempt === RETRIES - 1) return res;
+      // WP hosts sometimes throttle bursts of requests with a transient 503,
+      // or a WAF momentarily flags the request with a 403; retry both.
+      if (res.ok || ![403, 503].includes(res.status) || attempt === RETRIES - 1) return res;
     } catch (err) {
       // Network-level failure (timeout, DNS, connection refused). Retry, then give up.
       if (attempt === RETRIES - 1) {
@@ -60,11 +71,7 @@ export async function getPosts(perPage = 6, page = 1) {
   );
   // WordPress temporarily unreachable (host firewall, timeout, etc.): degrade to an
   // empty list instead of crashing the whole page/build.
-  if (!res) return { posts: [] as WPPost[], totalPages: 0 };
-  if (!res.ok) {
-    if (res.status === 400) return { posts: [] as WPPost[], totalPages: 0 };
-    throw new WordPressApiError(`WordPress API error ${res.status} on /posts`);
-  }
+  if (!res || !res.ok) return { posts: [] as WPPost[], totalPages: 0 };
   const posts: WPPost[] = await res.json();
   const totalPages = Number(res.headers.get("X-WP-TotalPages") ?? "1");
   return { posts, totalPages };
